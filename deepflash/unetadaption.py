@@ -55,7 +55,8 @@ class UNet(nn.Module):
 			)
 			prev_channels = 2 ** (wf + i)
 
-		self.last = nn.Conv2d(prev_channels, n_classes, kernel_size=1)
+		self.last = nn.ModuleList([nn.Conv2d(prev_channels, n_classes, kernel_size=1)])
+		self.last.append(nn.Softmax2d())
 
 	def forward(self, x):
 		blocks = []
@@ -67,8 +68,11 @@ class UNet(nn.Module):
 
 		for i, up in enumerate(self.up_path):
 			x = up(x, blocks[-i - 1])
-
-		return self.last(x)
+		
+		for last in self.last:
+			x = last(x)
+		
+		return x
 
 
 class UNetConvBlock(nn.Module):

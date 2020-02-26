@@ -55,6 +55,9 @@ class UNet(nn.Module):
 			)
 			prev_channels = 2 ** (wf + i)
 
+		#self.last = nn.ModuleList([nn.Linear(prev_channels, n_classes)])
+		#self.last.append(nn.Sigmoid())
+
 		self.last = nn.ModuleList([nn.Conv2d(prev_channels, n_classes, kernel_size=1)])
 		self.last.append(nn.Softmax2d())
 

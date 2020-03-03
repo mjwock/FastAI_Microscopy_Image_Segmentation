@@ -8,6 +8,7 @@ from skimage import io
 import numpy as np
 
 import elasticdeform	#!pip install elasticdeform
+import pdb
 
 
 # Helper functions for elastic deformation
@@ -106,11 +107,11 @@ def get_custom_transforms(do_flip:bool=True,
 	if max_rotate: res.append(rotate(degrees=(-max_rotate,max_rotate), p=p_affine))
 	if elastic_deformation: res.append(elastic_transform(p=p_deformation,seed=(0,1000)))
 	if max_lighting:
-			res.append(brightness(change=(0.5*(1-max_lighting), 0.5*(1+max_lighting)), p=p_lighting, use_on_y=False))
-			res.append(contrast(scale=(1-max_lighting, 1/(1-max_lighting)), p=p_lighting, use_on_y=False))
+		res.append(brightness(change=(0.5*(1-max_lighting), 0.5*(1+max_lighting)), p=p_lighting, use_on_y=False))
+		res.append(contrast(scale=(1-max_lighting, 1/(1-max_lighting)), p=p_lighting, use_on_y=False))
 
 	if transform_valid_ds: res_y = res 
-	else: res_y=[]
+	else: res_y=[crop_pad()]
 
 	#       train                   , valid
 	return (res + listify(xtra_tfms), res_y)
@@ -128,7 +129,7 @@ class WeightedLabels(ItemBase):
 
 		self.target_size = target_size
 
-	def apply_tfms(self, tfms,**kwargs): 
+	def apply_tfms(self, tfms, **kwargs): 
 		# if mask should be cropped, add operation 'do_crop_y' to transforms
 		crop_to_target_size = self.target_size
 		if crop_to_target_size:
@@ -194,7 +195,7 @@ class CustomSegmentationItemList(ImageList):
 		if target_size:
 			print(f'Masks will be cropped to {target_size}. Choose \'None\' to keep initial size.')
 		else:
-			print(f'Masks won\'t be cropped.')
+			print(f'Masks will not be cropped.')
 		
 		y = CustomSegmentationLabelList(labels,wghts,classes,target_size,path=self.path)
 		res = self._label_list(x=self, y=y)
@@ -353,7 +354,7 @@ class CustomSegmentationItemList(ImageList):
 class FlattenedWeightedLoss():
 		"Same as `func`, but flattens input and target."
 		def __init__(self, func, *args, 
-								 axis:int=-1,
+								 axis:int=1,
 								 reduction_mode='sum', 
 								 longify:bool=True, 
 								 is_2d:bool=True, 
@@ -367,15 +368,17 @@ class FlattenedWeightedLoss():
 		@reduction.setter
 		def reduction(self, v): self.func.reduction = v
 
-		def __call__(self, 
-								 input:Tensor, 
-								 labels:Tensor, 
-								 weights:Tensor,
-								 red_func:Optional[Callable]=None, **kwargs)->Rank0Tensor:
+		def __call__(self,
+					 input:Tensor,
+					 labels:Tensor, 
+					 weights:Tensor,
+					 **kwargs) -> Rank0Tensor:
 				
 				assert self.reduction_mode in ('sum','mean','none'), \
 					'Check reduction_mode and chose between sum, mean and none'
-
+				
+				#pdb.set_trace()
+												
 				# flatten
 				input = input.transpose(self.axis,-1).contiguous()
 				labels = labels.transpose(self.axis,-1).contiguous()
@@ -389,6 +392,8 @@ class FlattenedWeightedLoss():
 				input = input.view(-1,input.shape[-1]) if self.is_2d else input.view(-1)
 				labels = labels.view(-1)
 				weights = weights.view(-1)
+				
+				#pdb.set_trace()
 
 				res = nn.CrossEntropyLoss(reduction='none')(input, labels, **kwargs)
 
@@ -408,26 +413,30 @@ def WeightedCrossEntropyLoss(*args, axis:int=-1, **kwargs):
 
 class flattened_metrics():
 	"""Class to handle regular loss functions, pass any given kwargs and ignore the passed weights"""
-	def __init__(self,func:Callable,swap_pred=False, **kwargs):
+	def __init__(self,func:Callable,swap_pred=False, softmax=True, **kwargs):
 		self.func = func
 		self.kwargs = kwargs
-		self.swap_pred =swap_pred
+		self.swap_pred = swap_pred
+		self.softmax = softmax
 	
 	def __repr__(self): return f"Wrapper for {self.func}"
 
 	def __call__(self,input:Tensor, target:Tensor,weights:Tensor):
 		
+		if self.softmax:
+			input = nn.Softmax2d()(input)
+				
 		if self.swap_pred:
 			return self.func(target,input,**self.kwargs)
 		
 		return self.func(input,target,**self.kwargs)
 
-def loss_wrapper(*args, metric:Callable,swap_pred=False, **kwargs):
+def metrics_wrapper(*args, metric:Callable, swap_pred=False, softmax=True, **kwargs):
 	"""
-	Wrapper for any metric that takes predictions and labels to calculate loss.	
+	Wrapper for any metric that takes predictions and labels to evaluate training.	
 	Args:
 		metric: desired loss function
 		swap_pred: bool value to swap prediction with ground_truth (e.g. for sklearn losses)
 		**kwargs: any additional arguments passed into the loss function
 	"""
-	return flattened_metrics(*args,func=metric,swap_pred=swap_pred,**kwargs)
+	return flattened_metrics(*args, func=metric, swap_pred=swap_pred, softmax=softmax, **kwargs)

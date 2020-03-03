@@ -4,8 +4,11 @@ import matplotlib.pyplot as plt
 import random
 import warnings
 
+def get_image_size(path):
+	imgEx = io.imread(path,as_gray=True)
+	return imgEx.shape
 
-def show_example_data_batch(image_path, img_df:DataFrame, get_labels:Callable, get_weights:Callable,cmap='viridis', n:int=3):
+def show_example_data_batch(image_path, img_df:DataFrame, get_labels:Callable, get_weights:Callable,cmap='viridis', n:int=3,as_gray=True):
 	
 	assert n>0, 'n must be greater than 0.'
 	

@@ -425,6 +425,7 @@ class flattened_metrics():
 		
 		if self.softmax:
 			input = nn.Softmax2d()(input)
+			pdb.set_trace()
 				
 		if self.swap_pred:
 			return self.func(target,input,**self.kwargs)

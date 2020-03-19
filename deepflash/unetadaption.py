@@ -43,9 +43,14 @@ class UNet(nn.Module):
 		prev_channels = in_channels
 		self.down_path = nn.ModuleList()
 		for i in range(depth):
-			self.down_path.append(
-				UNetConvBlock(prev_channels, 2 ** (wf + i), padding, batch_norm)
-			)
+			if i == 0:
+				self.down_path.append(
+					UNetConvBlock(prev_channels, 2 ** (wf + i), padding, batch_norm=False)
+				)
+			else:
+				self.down_path.append(
+					UNetConvBlock(prev_channels, 2 ** (wf + i), padding, batch_norm=batch_norm)
+				)
 			prev_channels = 2 ** (wf + i)
 
 		self.up_path = nn.ModuleList()

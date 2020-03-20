@@ -50,10 +50,14 @@ def _normalize_axis_list(axis, Xs):
 """AUGMENTATIONS"""
 
 class TfmCropY(TfmPixel):
-	"Decorator for just cropping y's."
+	"""Decorator for just cropping the masks as a final step in the augmentation pipeline."""
 	order=100
 
-def _do_crop_y(x,mask_size=(356,356)):
+def _do_crop_y(x,mask_size:tuple=(356,356)):
+	"""
+	Centercrop the masks to size 'mask_size'
+		:mask_size: tuple
+	"""
 	rows,cols = tis2hw(mask_size)
 	row = int((x.size(1)-rows+1) * 0.5)
 	col = int((x.size(2)-cols+1) * 0.5)
@@ -63,15 +67,27 @@ def _do_crop_y(x,mask_size=(356,356)):
 #wrapper for _do_crop_y
 do_crop_y = TfmCropY(_do_crop_y)
 
-def _initial_crop_pad(x, height=540, width=540, row_pct:uniform=0.5, col_pct:uniform=0.5):
+def _initial_crop_pad(x, height:int=540, width:int=540, row_pct:uniform=0.5, col_pct:uniform=0.5):
+	"""Initial crop function with slightly different input arguments to perform a random crop.
+		:height: height of the cropped area in pixels (int)
+		:width: width of the cropped area in pixels (int)
+		:row_pct: percentage for horizontal center point or uniform range for random placement (float)
+		:col_pct: percentage for vertical center point or uniform range for random placement (float)
+	"""
 	f_crop = _crop_image_points if isinstance(x, ImagePoints) else _crop_default
 	return f_crop(x, (height,width), row_pct, col_pct)
 
+#wrapper for _initial_crop_pad
 initial_crop_pad = TfmPixel(_initial_crop_pad, order = 0)
 
 def _elastic_transform(x, seed:uniform_int=42,sigma=8,points=5,interpolation_magnitude=0,mode="constant"):
-	"""Elastic deformation based on following repo: 
-			https://pypi.org/project/elasticdeform/
+	"""
+	Slightly altered elastic smooth deformation based on following repo: https://pypi.org/project/elasticdeform/
+		:seed: random factor for np.random, uniform_int range for random seeding (int)
+		:sigma: standard deviation of the normal distribution (float)
+		:points: number of points in displacement grid -> points * points (int)
+		:interpolation_magnitude: magnitude of interpolation, no interpolation if 0 ({0, 1, 2, 3, 4}) 
+		:mode: border mode (({nearest, wrap, reflect, mirror, constant}))
 	"""
 	image_array = np.asarray(x.data)[0]
 	cval = 0.0
@@ -104,7 +120,7 @@ tile_shape_set = (540,540)
 
 def get_custom_transforms(do_flip:bool=True,
 						flip_vert:bool=True,
-						elastic_deformation=True,
+						elastic_deformation:bool=True,
 						elastic_deform_args={'sigma':10, 'points':10},
 						random_crop= tile_shape_set,
 						rand_pos = rand_pos_set,
@@ -116,7 +132,23 @@ def get_custom_transforms(do_flip:bool=True,
 						transform_valid_ds =False,
 						xtra_tfms:Optional[Collection[Transform]]=None) -> Collection[Transform]:
 							
-	"Utility func to easily create a list of flip, rotate, elastic deformation, lighting transforms."
+	"""
+	Utility func to easily create a list of random_crop, flip, rotate, elastic deformation and lighting transforms.
+		:param do_flip: apply random flip (bool)
+		:param flip_vert: additionally apply vertical flip, if do_flip = True (bool)
+		:param elastic_transform: apply elastic_deformation (bool)
+		:param elastic_deform_args: arguments passed into elastic_deformation (dict)
+		:param random_crop: tile_shape of random crop (tuple or None)
+		:param max_rotate: max angle for random rotation (float or None)
+		:param max_lighting: max lighting increase (float or None)
+		:param p_affine: probability for affine transformations (float)
+		:param p_lighting: probability for lighting transformations (float)
+		:param p_deformation: probability for deformation (float)
+		:param transform_valid_ds: apply transforms to validation dataset (bool)
+		
+		:return: List of transforms for train_ds and valid_ds
+		
+	"""
 	res = []
 	if random_crop:res.append(initial_crop_pad(height=random_crop[0],width=random_crop[1],**rand_pos))
 	if do_flip:    res.append(dihedral_affine() if flip_vert else flip_lr(p=0.5))
@@ -126,8 +158,10 @@ def get_custom_transforms(do_flip:bool=True,
 		res.append(brightness(change=(0.5, 0.5*(1+max_lighting)), p=p_lighting, use_on_y=False))
 		res.append(contrast(scale=(1, 1/(1-max_lighting)), p=p_lighting, use_on_y=False))
 
+	# either transform valid_ds too or just add random crop
 	if transform_valid_ds: res_y = res 
-	else: res_y=[initial_crop_pad(height=random_crop[0],width=random_crop[1],**rand_pos)]
+	else: 
+		if random_crop: res_y=[initial_crop_pad(height=random_crop[0],width=random_crop[1],**rand_pos)]
 
 	#       train                   , valid
 	return (res + listify(xtra_tfms), res_y)
@@ -136,8 +170,8 @@ def get_custom_transforms(do_flip:bool=True,
 """CUSTOM ItemBase"""
 
 class WeightedLabels(ItemBase):
-	"""Custom ItemBase to store and process labels and pixelweights together.
-	Also handling the target_size of the masks.
+	"""
+	Custom ItemBase to store and process labels and pixelwise weights together.	Also handling the target_size of the masks.
 	"""
 	def __init__(self, lbl:Image, wgt:Image, target_size:Tuple=None):
 		self.lbl,self.wgt = lbl,wgt
@@ -378,7 +412,7 @@ class FlattenedWeightedLoss():
 				self.func,self.axis,self.longify,self.is_2d = func(*args,**kwargs),axis,longify,is_2d
 				self.reduction_mode = reduction_mode
 
-		def __repr__(self): return f"My FlattenedLoss of {self.func}"
+		def __repr__(self): return "WeightedCrossEntropyLoss"
 		@property
 		def reduction(self): return self.func.reduction
 		@reduction.setter
@@ -392,8 +426,6 @@ class FlattenedWeightedLoss():
 				
 				assert self.reduction_mode in ('sum','mean','none'), \
 					'Check reduction_mode and chose between sum, mean and none'
-				
-				#pdb.set_trace()
 												
 				# flatten
 				input = input.transpose(self.axis,-1).contiguous()
@@ -409,8 +441,7 @@ class FlattenedWeightedLoss():
 				labels = labels.view(-1)
 				weights = weights.view(-1)
 				
-				#pdb.set_trace()
-
+				
 				res = nn.CrossEntropyLoss(reduction='none')(input, labels, **kwargs)
 
 				if self.reduction_mode =='sum':
@@ -428,7 +459,7 @@ def WeightedCrossEntropyLoss(*args, axis:int=-1, **kwargs):
 """METRICS"""
 
 class flattened_metrics():
-	"""Class to handle regular loss functions, pass any given kwargs and ignore the passed weights"""
+	"""Class to handle regular metrics, pass any given kwargs into the function and ignore the passed weights"""
 	def __init__(self,func:Callable, swap_pred=False, softmax=True, argmax=False, **kwargs):
 		self.func = func
 		self.kwargs = kwargs
@@ -459,8 +490,12 @@ def metrics_wrapper(*args, metric:Callable, swap_pred=False, softmax=True,argmax
 	Args:
 		:metric: desired loss function
 		:name: name that is displayed in fastai
-		:swap_pred: bool value to swap prediction with ground_truth (e.g. for sklearn losses)
-		:softmax:
-		any additional kwargs will be passed into the loss function
+		:swap_pred: bool to swap prediction with ground_truth (e.g. for sklearn losses)
+		:softmax: bool if softmax should be applied
+		:argmax: bool if argmax should be applied
+		
+		:kwargs: any additional kwargs will be passed into the loss function
+		
+		:return: metric value as float
 	"""
 	return flattened_metrics(*args, func=metric, swap_pred=swap_pred, softmax=softmax,argmax=argmax, **kwargs)

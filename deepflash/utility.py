@@ -1,6 +1,8 @@
 from fastai.vision import *
 from skimage import io
 
+from deepflash.fastai_extension import _elastic_transform, _do_crop_y
+
 import matplotlib.pyplot as plt
 import numpy as np
 import warnings
@@ -179,14 +181,17 @@ def test_deformation(shape:tuple=(540,540),
 """User Input Functions"""
 
 def chose_lr():
+	""":return: float of user input lr"""
 	lr = float(input('Chose learning rate (e.g. 1e-04): \n'))
 	return lr
 	
 def chose_n_epochs():
+	""":return: int of user input number of epochs"""
 	n_epochs = int(input('Number of training epochs: \n'))
 	return n_epochs
 	
 def chose_fold():
+	""":return: int of user input fold index"""
 	fold = int(input('Index of fold to use for further training (0,...,n): \n'))
 	return fold
 
@@ -198,10 +203,7 @@ def chose_fold():
 def blockPrint():
 	sys.stdout = open(os.devnull, 'w')
 
-# Restore printing
+# Enable printing
 def enablePrint():
 	sys.stdout = sys.__stdout__
-
-from deepflash.fastai_extension import _elastic_transform, _do_crop_y
-
 
